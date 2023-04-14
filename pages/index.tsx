@@ -1,52 +1,121 @@
 import Head from "next/head"
-import Link from "next/link"
+import { Authenticator } from "@aws-amplify/ui-react"
+import { API, Amplify, Auth, withSSRContext } from "aws-amplify"
 
-import { siteConfig } from "@/config/site"
-import { Layout } from "@/components/layout"
-import { buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Layout } from '@/components/layout';
+import awsExports from "../src/aws-exports"
+import { createPost } from "../src/graphql/mutations"
+import { listPosts } from "../src/graphql/queries"
 
-export default function IndexPage() {
+Amplify.configure({ ...awsExports, ssr: true })
+
+export async function getServerSideProps({ req }) {
+  const SSR = withSSRContext({ req })
+
+  try {
+    const response = await SSR.API.graphql({
+      query: listPosts,
+      authMode: "API_KEY",
+    })
+    return {
+      props: {
+        posts: response.data.listPosts.items,
+      },
+    }
+  } catch (error) {
+    console.error(error)
+    return {
+      props: {},
+    }
+  }
+}
+
+async function handleCreatePost(event) {
+  event.preventDefault()
+
+  const form = new FormData(event.target)
+
+  try {
+    //@ts-ignore
+    const { data } = await API.graphql({
+      authMode: "AMAZON_COGNITO_USER_POOLS",
+      query: createPost,
+      variables: {
+        input: {
+          title: form.get("title"),
+          content: form.get("content"),
+        },
+      },
+    })
+
+    window.location.href = `/posts/${data.createPost.id}`
+  } catch ({ errors }) {
+    console.error(...errors)
+    throw new Error(errors[0].message)
+  }
+}
+
+export default function Home({ posts = [] }) {
   return (
     <Layout>
       <Head>
-        <title>Next.js</title>
-        <meta
-          name="description"
-          content="Next.js template for building apps with Radix UI and Tailwind CSS"
-        />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Amplify + Next.js</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <section className="container grid items-center gap-6 pt-6 pb-8 md:py-10">
-        <div className="flex max-w-[980px] flex-col items-start gap-2">
-          <h1 className="text-3xl font-extrabold leading-tight tracking-tighter sm:text-3xl md:text-5xl lg:text-6xl">
-            Beautifully designed components <br className="hidden sm:inline" />
-            built with Radix UI and Tailwind CSS.
-          </h1>
-          <p className="max-w-[700px] text-lg text-slate-700 dark:text-slate-400 sm:text-xl">
-            Accessible and customizable components that you can copy and paste
-            into your apps. Free. Open Source. And Next.js 13 Ready.
-          </p>
+
+      <main className="container mx-auto">
+        <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+          Amplify + Next.js
+        </h1>
+
+        <p className="leading-7 [&:not(:first-child)]:mt-6">
+          <code className="relative rounded bg-slate-100 py-[0.2rem] px-[0.3rem] font-mono text-sm font-semibold text-slate-900 dark:bg-slate-800 dark:text-slate-400">
+            {posts.length}
+          </code>
+          posts
+        </p>
+
+        <div>
+          {posts.map((post) => (
+            <a href={`/posts/${post.id}`} key={post.id}>
+              <h3 className="mt-8 scroll-m-20 text-2xl font-semibold tracking-tight">{post.title}</h3>
+              <p className="leading-7 [&:not(:first-child)]:mt-6">{post.content}</p>
+            </a>
+          ))}
+
+          <div>
+            <h3 className="mt-8 scroll-m-20 text-2xl font-semibold tracking-tight">New Post</h3>
+
+            <Authenticator>
+              <form onSubmit={handleCreatePost}>
+                <fieldset>
+                  <legend>Title</legend>
+                  <Input
+                    defaultValue={`Today, ${new Date().toLocaleTimeString()}`}
+                    name="title"
+                  />
+                </fieldset>
+
+                <fieldset>
+                  <legend>Content</legend>
+                  <Textarea
+                    defaultValue="I built an Amplify project with Next.js!"
+                    name="content"
+                  />
+                </fieldset>
+
+                <Button variant="outline">Create Post</Button>
+                <Button type="button" onClick={() => Auth.signOut()}>
+                  Sign out
+                </Button>
+              </form>
+            </Authenticator>
+          </div>
         </div>
-        <div className="flex gap-4">
-          <Link
-            href={siteConfig.links.docs}
-            target="_blank"
-            rel="noreferrer"
-            className={buttonVariants({ size: "lg" })}
-          >
-            Documentation
-          </Link>
-          <Link
-            target="_blank"
-            rel="noreferrer"
-            href={siteConfig.links.github}
-            className={buttonVariants({ variant: "outline", size: "lg" })}
-          >
-            GitHub
-          </Link>
-        </div>
-      </section>
+      </main>
     </Layout>
   )
 }
